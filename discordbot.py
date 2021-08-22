@@ -57,6 +57,56 @@ async def d(ctx):
     else:
         await ctx.voice_client.disconnect()
 
+@client.command()
+async def conf(ctx, command, *args):
+    if command == 'allow':
+        await allow(ctx, *args)
+    else:
+        raise commands.errors.CommandNotFound(f"Command 'conf {command}' is Not Found")
+    await delete_command_safety(ctx.message)
+
+async def allow(ctx, *targets):
+    guild_data = await fetch_guild_data(ctx.guild)
+    minus = False
+    message = ""
+
+    if targets[0] == 'show':
+        message = "現在のステータスは以下です\n```\n"
+        for speaker, toggle in guild_data.speakable_status().items():
+            if isinstance(speaker, discord.abc.User) or isinstance(speaker, discord.abc.Role):
+                speaker_name = speaker.name
+            else:
+                speaker_name = speaker
+            status = "ok" if toggle else "ng"
+            message += f"{speaker_name}: {status}\n"
+        message += "```"
+        await ctx.send(message)
+        return
+    
+    if targets[0] == 'reset':
+        guild_data.reset_speakable()
+    else:
+        for target in targets:
+            if target == '-':
+                minus = True
+            else:
+                if re.match(r'^-', target):
+                    target = re.sub(r'^-', '', target)
+                    minus = True
+
+                guild_data.set_speakable(target, not minus)
+                minus = False
+    message = "ステータスを更新しました\n```\n"
+    for speaker, toggle in guild_data.speakable_status().items():
+        if isinstance(speaker, discord.User) or isinstance(speaker, discord.Role):
+            speaker_name = speaker.name
+        else:
+            speaker_name = speaker
+        status = "ok" if toggle else "ng"
+        message += f"{speaker_name}: {status}\n"
+    message += "```"
+    await ctx.send(message)
+
 @client.listen()
 async def on_message(message):
     voice_client = message.guild.voice_client
@@ -67,6 +117,9 @@ async def on_message(message):
     if message.author.bot:
         return
     if message.content.startswith(prefix):
+        return
+    guild_data = await fetch_guild_data(message.guild, refresh=False)
+    if not guild_data.is_speakable(message.author):
         return
 
     text = message.content
@@ -133,8 +186,12 @@ async def on_voice_state_update(member, before, after):
 @client.listen()
 async def on_command_error(ctx, error):
     orig_error = getattr(error, 'original', error)
-    error_msg = ''.join(traceback.TracebackException.from_exception(orig_error).format())
-    await ctx.send(error_msg)
+    print(''.join(traceback.TracebackException.from_exception(orig_error).format()))
+
+    if isinstance(error, commands.errors.CommandNotFound):
+        await ctx.send('このコマンドは利用できません')
+    else:
+        await ctx.send(orig_error)
 
 @client.command()
 async def h(ctx):
@@ -148,6 +205,93 @@ async def h(ctx):
 ```
 '''
     await ctx.send(message)
+
+
+class GuildData:
+    def __init__(self, guild):
+        self._guild = guild
+        self.reset_speakable()
+
+    async def refresh_guild(self):
+        async for member in self._guild.fetch_members():
+            pass
+        await self._guild.fetch_roles()
+
+    def is_speakable(self, user):
+        for speaker in [user, *user.roles, "everyone"]:
+            speaker_id = self._speaker2id(speaker)
+            if speaker_id in self._speakable_ids:
+                return self._speakable_ids[speaker_id]
+        raise Exception
+    
+    def set_speakable(self, speaker, toggle=True):
+        self._reset_speakable_ids()
+        self._speakable[self._speaker2id(speaker)] = toggle
+
+    def speakable_status(self):
+        status = {}
+
+        for speaker, toggle in self._speakable.items():
+            status[self._id2speaker(speaker)] = toggle
+        return status
+
+    def reset_speakable(self):
+        self._speakable = { "everyone" : True }
+        self._reset_speakable_ids()
+
+    @property
+    def _speakable_ids(self):
+        if self.___speakable_ids:
+            return self.___speakable_ids
+        hsh = {}
+        for speaker, toggle in self._speakable.items():
+            hsh[self._speaker2id(speaker)] = toggle
+        self.___speakable_ids = hsh
+        return hsh
+
+    ___speakable_ids = None
+    def _reset_speakable_ids(self):
+        self.___speakable_ids = None
+
+    def _speaker2id(self, speaker):
+        if isinstance(speaker, discord.abc.User):
+            return f"<@!{speaker.id}>"
+        elif isinstance(speaker, discord.abc.Role):
+            return f"<@&{speaker.id}>"
+        elif isinstance(speaker, str) and re.fullmatch(r"<@[!&](\d*)>", speaker):
+            return speaker
+        elif speaker in ['all', 'everyone', '@everyone']:
+            return 'everyone'
+        else:
+            raise Exception(f'{speaker} is not valid speaker')
+
+    def _id2speaker(self, speaker_id):
+        if isinstance(speaker_id, str):
+            m = re.fullmatch(r"<@!(\d*)>", speaker_id)
+            if m:
+                member = self._guild.get_member(int(m.group(1)))
+                if member:
+                    return (member.nick or member.name)
+            m = re.fullmatch(r"<@&(\d*)>", speaker_id)
+            if m:
+                role = self._guild.get_role(int(m.group(1)))
+                if role:
+                    return role
+        
+        if isinstance(speaker_id, discord.abc.User) or isinstance(speaker_id, discord.abc.Role):
+            return speaker_id
+        elif speaker_id in ['all', 'everyone', '@everyone']:
+            return 'everyone'
+        else:
+            raise Exception(f'{speaker_id} is not valid speaker_id')
+
+guild_datas = {}
+async def fetch_guild_data(guild, refresh=True):
+    if not guild.id in guild_datas:
+        guild_datas[guild.id] = GuildData(guild)
+    if refresh:
+        await guild_datas[guild.id].refresh_guild()
+    return guild_datas[guild.id]
 
 async def delete_command_safety(message):
     try:
