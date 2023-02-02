@@ -11,7 +11,7 @@ import os
 import traceback
 import urllib.parse
 import re
-from server import keep_alive
+# from server import keep_alive
 
 # # You must include this line for it to work
 
@@ -217,7 +217,7 @@ def replace_text_by_match(text,
                                                                else '') + last
 
 
-# ウェブサーバーを起動する
-keep_alive()
+# # ウェブサーバーを起動する
+# keep_alive()
 
 client.run(token)
