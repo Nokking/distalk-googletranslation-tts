@@ -3,7 +3,8 @@ import functools
 import itertools
 import math
 import random
-import static_ffmpeg
+### For use in Repl.it, plz unseal comment
+# import static_ffmpeg
 import discord
 from discord.ext import commands
 import os
@@ -17,7 +18,8 @@ from server import keep_alive
 # discord.opus.load_opus("./libopus.so.0.8.0")
 
 # ffmpeg installed on first call to add_paths(), threadsafe.
-static_ffmpeg.add_paths()  # blocks until files are downloaded
+### For use in Repl.it, plz unseal comment
+# static_ffmpeg.add_paths()  # blocks until files are downloaded
 prefix = os.getenv('DISCORD_BOT_PREFIX', default='🦑')
 lang = os.getenv('DISCORD_BOT_LANG', default='ja')
 botname = os.getenv('DISCORD_BOT_NAME', default='Bot')
